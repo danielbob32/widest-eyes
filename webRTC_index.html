@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Video Stream</title>
+    <style>
+        video {
+            width: 640px;
+            height: 480px;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebRTC Video Stream</h1>
+    <video id="video" autoplay></video>
+    <script>
+        const video = document.getElementById('video');
+        const ws = new WebSocket('ws://localhost:8765'); // Update to your server address
+
+        const pc = new RTCPeerConnection();
+
+        ws.onmessage = async (message) => {
+            const data = JSON.parse(message.data);
+            if (data.sdp) {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ sdp: pc.localDescription }));
+            }
+        };
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            })
+            .catch(error => {
+                console.error('Error accessing media devices.', error);
+            });
+    </script>
+</body>
+</html>
