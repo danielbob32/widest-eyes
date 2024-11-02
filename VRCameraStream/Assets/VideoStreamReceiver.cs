@@ -1,115 +1,69 @@
-using System;
 using UnityEngine;
-using NativeWebSocket;
-using SimpleJSON;
 
-public class VideoStreamReceiver : MonoBehaviour
+
+public class SplitStereoWebcamStream : MonoBehaviour
 {
-    private WebSocket webSocket;
-    public Material leftEyeMaterial;
-    public Material rightEyeMaterial;
-    private Texture2D leftTexture;
-    private Texture2D rightTexture;
 
-    async void Start()
+    public Material leftEyeMaterial;   
+    public Material rightEyeMaterial;  
+
+
+    private WebCamTexture webCamTexture;      
+    private RenderTexture leftRenderTexture;  
+    private RenderTexture rightRenderTexture; 
+
+    [SerializeField] private int cameraIndex = 2;          
+    [SerializeField] private int requestedWidth = 2560;    // Width of the full stereo frame (both eyes combined)
+    [SerializeField] private int requestedHeight = 720;   
+    [SerializeField] private int requestedFPS = 30;    
+
+    void Start()
     {
-        string pcIP = "192.168.68.101"; // Replace with your PC's IP address
-        webSocket = new WebSocket($"ws://{pcIP}:8765");
-
-        // Event handlers: Open, Error, Close, Message
-        webSocket.OnOpen += () => Debug.Log("WebSocket Connection Opened");
-        webSocket.OnError += (e) => Debug.LogError("WebSocket Error: " + e);
-        webSocket.OnClose += (e) => Debug.Log($"WebSocket Connection Closed: {e}");
-
-        webSocket.OnMessage += (bytes) =>
+        // Get the list of available webcam devices
+        WebCamDevice[] devices = WebCamTexture.devices;
+        if (devices.Length == 0)  // If no webcams are detected, log an error and exit
         {
-            string message = System.Text.Encoding.UTF8.GetString(bytes);
-            ProcessMessage(message);
-        };
+            Debug.LogError("No webcam found on this device.");
+            return;
+        }
 
-        // Initialize textures
-        leftTexture = new Texture2D(320, 240, TextureFormat.RGB24, false);
-        rightTexture = new Texture2D(320, 240, TextureFormat.RGB24, false);
+        // Validate and adjust the camera index if it's out of range
+        if (cameraIndex >= devices.Length)
+        {
+            Debug.LogError($"Camera index {cameraIndex} is out of range. Defaulting to first camera.");
+            cameraIndex = 0;  // Default to the first camera if the specified index is invalid
+        }
 
-        // Assign initial textures to materials
-        leftEyeMaterial.mainTexture = leftTexture;
-        rightEyeMaterial.mainTexture = rightTexture;
+        // Initialize WebCamTexture with specific camera, resolution, and frame rate
+        webCamTexture = new WebCamTexture(devices[cameraIndex].name, requestedWidth, requestedHeight, requestedFPS);
+        webCamTexture.Play();  // Start capturing from the selected webcam
 
-        // Connect to the WebSocket server
-        await webSocket.Connect();
+        // Set up RenderTextures for each eye, splitting the requested width in half for stereo view
+        leftRenderTexture = new RenderTexture(requestedWidth / 2, requestedHeight, 24, RenderTextureFormat.Default);
+        rightRenderTexture = new RenderTexture(requestedWidth / 2, requestedHeight, 24, RenderTextureFormat.Default);
+
+        // Assign RenderTextures to the materials to be displayed for each eye
+        leftEyeMaterial.mainTexture = leftRenderTexture;
+        rightEyeMaterial.mainTexture = rightRenderTexture;
     }
 
     void Update()
     {
-#if !UNITY_WEBGL || UNITY_EDITOR
-        webSocket.DispatchMessageQueue();
-#endif
-    }
-
-    async void OnApplicationQuit()
-    {
-        if (webSocket != null)
+        if (webCamTexture.isPlaying)  
         {
-            await webSocket.Close();
+            // Render the left half of the webcam feed to the left eye texture
+            Graphics.Blit(webCamTexture, leftRenderTexture, new Vector2(0.5f, 1), new Vector2(0, 1));
+
+            // Render the right half of the webcam feed to the right eye texture
+            Graphics.Blit(webCamTexture, rightRenderTexture, new Vector2(0.5f, 1), new Vector2(0.5f, 1));
         }
     }
 
-    void ProcessMessage(string message)
+    private void OnApplicationQuit()
     {
-        try
+        if (webCamTexture != null && webCamTexture.isPlaying)
         {
-            // if the message is empty, log an error and return
-            if (string.IsNullOrEmpty(message))
-            {
-                Debug.LogError("Received empty message");
-                return;
-            }
-            
-            // Parse the JSON message using SimpleJSON
-            var data = JSON.Parse(message);
-            
-            // Extract the base64-encoded image data from the JSON message for the left and right eyes
-            string leftBase64 = data["left"];
-            string rightBase64 = data["right"];
-
-            // if either image data is empty, log an error and return
-            if (string.IsNullOrEmpty(leftBase64) || string.IsNullOrEmpty(rightBase64))
-            {
-                Debug.LogError("Received empty image data");
-                return;
-            }
-            
-            // Update the left and right eye textures with the new image data
-            UpdateTexture(leftBase64, leftTexture);
-            UpdateTexture(rightBase64, rightTexture);
+            webCamTexture.Stop();
         }
-
-        catch (Exception e)
-        {
-            Debug.LogError("Error processing message: " + e);
-        }
-    }
-
-    void UpdateTexture(string base64String, Texture2D texture)
-    {
-        // check if the texture or base64 string is invalid
-        if (texture == null || string.IsNullOrEmpty(base64String))
-        {
-            Debug.LogError("Invalid texture or base64 string");
-            return;
-        }
-
-        // Convert the base64 string to a byte array to load into the texture
-        byte[] imageBytes = Convert.FromBase64String(base64String);
-
-        
-        if (!texture.LoadImage(imageBytes))
-        {
-            Debug.LogError("Failed to load image into texture");
-            return;
-        }
-        
-        // upload the updated texture to the GPU
-        texture.Apply();
     }
 }
