@@ -4,13 +4,8 @@ using UnityEngine;
 public class SplitStereoWebcamStream : MonoBehaviour
 {
 
-    public Material leftEyeMaterial;   
-    public Material rightEyeMaterial;  
-
-
+    public Material EyeMaterial;   
     private WebCamTexture webCamTexture;      
-    private RenderTexture leftRenderTexture;  
-    private RenderTexture rightRenderTexture; 
 
     [SerializeField] private int cameraIndex = 1;          
     [SerializeField] private int requestedWidth = 2560;    // Width of the full stereo frame (both eyes combined)
@@ -38,25 +33,9 @@ public class SplitStereoWebcamStream : MonoBehaviour
         webCamTexture = new WebCamTexture(devices[cameraIndex].name, requestedWidth, requestedHeight, requestedFPS);
         webCamTexture.Play();  // Start capturing from the selected webcam
 
-        // Set up RenderTextures for each eye, splitting the requested width in half for stereo view
-        leftRenderTexture = new RenderTexture(requestedWidth / 2, requestedHeight, 24, RenderTextureFormat.Default);
-        rightRenderTexture = new RenderTexture(requestedWidth / 2, requestedHeight, 24, RenderTextureFormat.Default);
+        // Assign webCamTexture to the materials to be displayed for each eye
+        EyeMaterial.mainTexture = webCamTexture;
 
-        // Assign RenderTextures to the materials to be displayed for each eye
-        leftEyeMaterial.mainTexture = leftRenderTexture;
-        rightEyeMaterial.mainTexture = rightRenderTexture;
-    }
-
-    void Update()
-    {
-        if (webCamTexture.isPlaying)  
-        {
-            // Render the left half of the webcam feed to the left eye texture
-            Graphics.Blit(webCamTexture, leftRenderTexture, new Vector2(0.5f, 1), new Vector2(0, 1));
-
-            // Render the right half of the webcam feed to the right eye texture
-            Graphics.Blit(webCamTexture, rightRenderTexture, new Vector2(0.5f, 1), new Vector2(0.5f, 1));
-        }
     }
 
     private void OnApplicationQuit()
