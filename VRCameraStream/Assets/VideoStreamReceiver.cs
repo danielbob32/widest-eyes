@@ -7,7 +7,7 @@ public class SplitStereoWebcamStream : MonoBehaviour
     public Material EyeMaterial;   
     private WebCamTexture webCamTexture;      
 
-    [SerializeField] private int cameraIndex = 1;          
+    [SerializeField] private int cameraIndex = 2;          
     [SerializeField] private int requestedWidth = 2560;    // Width of the full stereo frame (both eyes combined)
     [SerializeField] private int requestedHeight = 720;   
     [SerializeField] private int requestedFPS = 30;    
