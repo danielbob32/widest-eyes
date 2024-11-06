@@ -103,3 +103,5 @@ Temporary Items
 .venv
 
 \Assets\Samples
+
+*.png

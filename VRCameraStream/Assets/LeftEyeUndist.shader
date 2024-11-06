@@ -1,14 +1,14 @@
-Shader "Custom/StereoUndistortShader"
+Shader "Custom/LeftEyeUndistortShader"
 {
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
-        _K1 ("Radial Distortion K1", Float) = -0.15
-        _K2 ("Radial Distortion K2", Float) = 0.05
-        _P1 ("Tangential Distortion P1", Float) = 0.0
-        _P2 ("Tangential Distortion P2", Float) = 0.0
-        _CenterX ("Optical Center X", Float) = 0.5
-        _CenterY ("Optical Center Y", Float) = 0.5
+        _K1 ("K1", Float) = -0.15
+        _K2 ("K2", Float) = 0.05
+        _P1 ("P1", Float) = 0.0
+        _P2 ("P2", Float) = 0.0
+        _CenterX ("Center X", Float) = 0.5
+        _CenterY ("Center Y", Float) = 0.5
     }
     SubShader
     {
@@ -20,7 +20,7 @@ Shader "Custom/StereoUndistortShader"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            
+
             #include "UnityCG.cginc"
 
             struct appdata
@@ -37,13 +37,10 @@ Shader "Custom/StereoUndistortShader"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
-            float _K1;
-            float _K2;
-            float _P1;
-            float _P2;
-            float _CenterX;
-            float _CenterY;
-            
+
+            float _K1, _K2, _P1, _P2;
+            float _CenterX, _CenterY;
+
             v2f vert (appdata v)
             {
                 v2f o;
@@ -51,31 +48,29 @@ Shader "Custom/StereoUndistortShader"
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 return o;
             }
-            
+
             float2 undistort(float2 uv)
             {
-                // Convert UV to centered coordinates
-                float2 centered = uv - float2(_CenterX, _CenterY);
-                
-                float r2 = centered.x * centered.x + centered.y * centered.y;
-                float r4 = r2 * r2;
-                
-                // Radial distortion
-                float radialDistortion = 1.0 + _K1 * r2 + _K2 * r4;
-                
-                // Tangential distortion
-                float2 tangentialDistortion = float2(
+                // Adjust UVs to sample the left half of the texture
+                uv.x *= 0.5; // Left half of the texture
+
+                // Center the UVs
+                float2 center = float2(_CenterX * 0.5, _CenterY);
+                float2 centered = uv - center;
+
+                // Apply distortion
+                float r2 = dot(centered, centered);
+                float radial = 1.0 + _K1 * r2 + _K2 * r2 * r2;
+                float2 tan = float2(
                     2.0 * _P1 * centered.x * centered.y + _P2 * (r2 + 2.0 * centered.x * centered.x),
                     _P1 * (r2 + 2.0 * centered.y * centered.y) + 2.0 * _P2 * centered.x * centered.y
                 );
-                
-                // Apply distortions
-                float2 distorted = centered * radialDistortion + tangentialDistortion;
-                
-                // Convert back to UV space
-                return distorted + float2(_CenterX, _CenterY);
+                float2 distorted = centered * radial + tan;
+
+                // Return the distorted UVs
+                return distorted + center;
             }
-            
+
             fixed4 frag (v2f i) : SV_Target
             {
                 float2 undistortedUV = undistort(i.uv);
