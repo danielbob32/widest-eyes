@@ -6,9 +6,9 @@ from pathlib import Path
 class AutoCalibrationCapture:
     def __init__(self, camera_index=1, width=2560, height=720):
         # Create directories for saving images
-        self.output_dir = Path("calibration_images")
-        self.left_dir = self.output_dir / "left"
-        self.right_dir = self.output_dir / "right"
+       
+        self.left_dir = Path("left_wide")
+        self.right_dir = Path("right_wide")
         
         self.left_dir.mkdir(parents=True, exist_ok=True)
         self.right_dir.mkdir(parents=True, exist_ok=True)

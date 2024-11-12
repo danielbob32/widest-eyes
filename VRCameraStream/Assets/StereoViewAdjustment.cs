@@ -15,8 +15,8 @@ public class StereoQuadAdjustment : MonoBehaviour
 
     [Header("Adjustment Settings")]
     [SerializeField] private float positionSpeed = 0.001f;
-    [SerializeField] private float rotationSpeed = 30f; // Degrees per second
-    [SerializeField] private float scaleSpeed = 0.01f;
+    [SerializeField] private float rotationSpeed = 60f; // Degrees per second
+    [SerializeField] private float scaleSpeed = 0.1f;
 
     private InputDevice leftController;
     private InputDevice rightController;

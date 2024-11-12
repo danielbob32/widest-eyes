@@ -930,7 +930,7 @@ PrefabInstance:
     - target: {fileID: -7635826562936255635, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
-      objectReference: {fileID: 2100000, guid: 237ed2ee9ed33564d9983da9f39d0d80, type: 2}
+      objectReference: {fileID: 2100000, guid: 8193f41b5bf3d8943973c22c83931f1f, type: 2}
     - target: {fileID: 919132149155446097, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
       propertyPath: m_Name
       value: square_right
@@ -960,11 +960,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
---- !u!23 &122117399 stripped
-MeshRenderer:
-  m_CorrespondingSourceObject: {fileID: -7635826562936255635, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
-  m_PrefabInstance: {fileID: 122117398}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &164049572
 GameObject:
   m_ObjectHideFlags: 0
@@ -1281,8 +1276,6 @@ GameObject:
   m_Component:
   - component: {fileID: 658845673}
   - component: {fileID: 658845675}
-  - component: {fileID: 658845674}
-  - component: {fileID: 658845676}
   m_Layer: 0
   m_Name: 'RightEyeCamera '
   m_TagString: Untagged
@@ -1306,14 +1299,6 @@ Transform:
   - {fileID: 1280055579}
   m_Father: {fileID: 189317500}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!81 &658845674
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 658845672}
-  m_Enabled: 1
 --- !u!20 &658845675
 Camera:
   m_ObjectHideFlags: 0
@@ -1365,20 +1350,6 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!114 &658845676
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 658845672}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 80cc6f9b15e81a64e87043ab6a7cebbb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  targetRenderer: {fileID: 122117399}
-  isLeftEye: 0
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -1536,7 +1507,7 @@ PrefabInstance:
     - target: {fileID: -7635826562936255635, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
-      objectReference: {fileID: 2100000, guid: 237ed2ee9ed33564d9983da9f39d0d80, type: 2}
+      objectReference: {fileID: 2100000, guid: 837890e52903e2c45975c024c272020a, type: 2}
     - target: {fileID: 919132149155446097, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
       propertyPath: m_Name
       value: square_left
@@ -1566,11 +1537,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
---- !u!23 &806163054 stripped
-MeshRenderer:
-  m_CorrespondingSourceObject: {fileID: -7635826562936255635, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
-  m_PrefabInstance: {fileID: 806163053}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &860244258
 GameObject:
   m_ObjectHideFlags: 0
@@ -1666,7 +1632,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8d08072ee88e06345a0797d723a262ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  EyeMaterial: {fileID: 2100000, guid: 237ed2ee9ed33564d9983da9f39d0d80, type: 2}
+  LeftEyeMaterial: {fileID: 2100000, guid: 837890e52903e2c45975c024c272020a, type: 2}
+  RightEyeMaterial: {fileID: 2100000, guid: 8193f41b5bf3d8943973c22c83931f1f, type: 2}
   cameraIndex: 1
   requestedWidth: 2560
   requestedHeight: 720
@@ -1682,7 +1649,6 @@ GameObject:
   - component: {fileID: 1553173327}
   - component: {fileID: 1553173329}
   - component: {fileID: 1553173328}
-  - component: {fileID: 1553173330}
   m_Layer: 0
   m_Name: LeftEyeCamera
   m_TagString: Untagged
@@ -1765,20 +1731,6 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!114 &1553173330
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1553173326}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 80cc6f9b15e81a64e87043ab6a7cebbb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  targetRenderer: {fileID: 806163054}
-  isLeftEye: 1
 --- !u!1 &1718353453
 GameObject:
   m_ObjectHideFlags: 0
