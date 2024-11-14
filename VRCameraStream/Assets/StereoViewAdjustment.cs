@@ -22,7 +22,7 @@ public class StereoQuadAdjustment : MonoBehaviour
     [SerializeField] private Color activeColor = Color.green;
     [SerializeField] private Color inactiveColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
     [SerializeField] private float hudScale = 0.003f;
-    [SerializeField] private Vector3 hudOffset = new Vector3(0f, -0.2f, 0.5f);
+    [SerializeField] private Vector3 hudOffset = new Vector3(0.15f, 0.06f, 0.5f); // Updated HUD position
     private TextMeshProUGUI hudText;
     private GameObject hudObj;
 
@@ -42,7 +42,8 @@ public class StereoQuadAdjustment : MonoBehaviour
         Position,
         Rotation,
         Depth,
-        Speed // New mode for adjusting speeds
+        Speed, // Mode for adjusting speeds
+        None // No adjustments
     }
 
     private AdjustmentMode currentAdjustmentMode = AdjustmentMode.Position;
@@ -53,11 +54,31 @@ public class StereoQuadAdjustment : MonoBehaviour
     private bool previousLeftXButtonState = false;
     private bool previousLeftYButtonState = false;
     private bool previousRightThumbstickButtonState = false;
+    private bool previousLeftThumbstickButtonState = false;
+    private bool previousLeftTriggerPressed = false;
+    private bool previousRightTriggerPressed = false;
 
     // Profile Management
     private List<StereoAdjustmentProfile> profiles = new List<StereoAdjustmentProfile>();
     private int currentProfileIndex = 0;
     private string profilesDirectory;
+
+    // HUD Visibility
+    private bool isHUDVisible = true;
+    private bool showInstructions = false;
+
+    // Grab Manipulation
+    private bool isLeftQuadGrabbed = false;
+    private bool isRightQuadGrabbed = false;
+    private Vector3 leftQuadGrabOffset;
+    private Vector3 rightQuadGrabOffset;
+    private Quaternion leftQuadGrabRotationOffset;
+    private Quaternion rightQuadGrabRotationOffset;
+    private Transform freezePoint;
+    // Freeze Frames
+    private bool framesFrozen = false;
+    private Transform leftQuadOriginalParent;
+    private Transform rightQuadOriginalParent;
 
     void Start()
     {
@@ -92,6 +113,10 @@ public class StereoQuadAdjustment : MonoBehaviour
         {
             ResetQuads();
         }
+            // Create a freeze point in the scene
+        freezePoint = new GameObject("FreezePoint").transform;
+        freezePoint.position = mainCamera.transform.position + mainCamera.transform.forward * 1.0f; // 1 meter in front of the camera
+        freezePoint.rotation = Quaternion.identity;
     }
 
     void CreateHUD()
@@ -131,41 +156,65 @@ public class StereoQuadAdjustment : MonoBehaviour
         hudText.text = "STEREO ADJUSTMENT\nInitializing...";
 
         RectTransform rectTransform = textObj.GetComponent<RectTransform>();
-        rectTransform.sizeDelta = new Vector2(300, 200);
+        rectTransform.sizeDelta = new Vector2(400, 400);
     }
 
     void UpdateHUD()
     {
         if (hudText == null) return;
-
-        string status = "<color=#00FF00>STEREO ADJ</color>\n";
-        status += $"Profile: {profiles[currentProfileIndex].profileName}\n";
-        status += $"Mode: <color=#00FF00>{currentAdjustmentMode}</color>\n";
-
-        if (currentAdjustmentMode == AdjustmentMode.Speed)
+        if (!isHUDVisible)
         {
-            status += $"<align=left>\n";
-            status += $"Pos Speed: {positionSpeed:F3}\n";
-            status += $"Rot Speed: {rotationSpeed:F3}\n";
-            status += $"Scale Speed: {scaleSpeed:F3}\n";
-            status += $"Depth Speed: {depthAdjustSpeed:F6}\n";
-            status += $"</align>";
+            hudText.text = string.Empty;
+            return;
+        }
+
+        if (showInstructions)
+        {
+            string instructions = "<color=#00FF00><b>Instructions</b></color>\n";
+            instructions += "Press <color=#00FF00>Y Button (Left)</color> to toggle instructions.\n";
+            instructions += "Press <color=#00FF00>B Button (Right)</color> to cycle modes.\n";
+            instructions += "Press <color=#00FF00>A Button (Right)</color> to save profile.\n";
+            instructions += "Press <color=#00FF00>X Button (Left)</color> to reset quads.\n";
+            instructions += "Click <color=#00FF00>Left Thumbstick</color> to toggle HUD.\n";
+            instructions += "Click <color=#00FF00>Right Thumbstick</color> to create new profile.\n";
+            instructions += "Hold <color=#00FF00>Grip</color> to grab quads.\n";
+            instructions += "Press <color=#00FF00>Left Trigger</color> to cycle profiles.\n";
+            instructions += "Press <color=#00FF00>Right Trigger</color> to freeze/unfreeze frames.\n";
+            instructions += "\nPress <color=#00FF00>Y Button (Left)</color> to exit instructions.";
+            hudText.text = instructions;
         }
         else
         {
-            status += $"<align=left>\n";
-            status += $"Left Eye:\n";
-            status += $"P:{leftQuadParent.localPosition:F3}\n";
-            status += $"R:{leftQuadParent.localRotation.eulerAngles:F1}\n";
-            status += $"S:{leftQuadParent.localScale:F6}\n";
-            status += $"\nRight Eye:\n";
-            status += $"P:{rightQuadParent.localPosition:F3}\n";
-            status += $"R:{rightQuadParent.localRotation.eulerAngles:F1}\n";
-            status += $"S:{rightQuadParent.localScale:F6}\n";
-            status += $"</align>";
-        }
+            string status = "<color=#00FF00>STEREO ADJ</color>\n";
+            status += $"Profile: {profiles[currentProfileIndex].profileName}\n";
+            status += $"Mode: <color=#00FF00>{currentAdjustmentMode}</color>\n";
 
-        hudText.text = status;
+            if (currentAdjustmentMode == AdjustmentMode.Speed)
+            {
+                status += $"<align=left>\n";
+                status += $"Pos Speed: {positionSpeed:F3}\n";
+                status += $"Rot Speed: {rotationSpeed:F3}\n";
+                status += $"Scale Speed: {scaleSpeed:F3}\n";
+                status += $"Depth Speed: {depthAdjustSpeed:F6}\n";
+                status += $"</align>";
+            }
+            else
+            {
+                status += $"<align=left>\n";
+                status += $"Left Eye:\n";
+                status += $"P:{leftQuadParent.localPosition:F3}\n";
+                status += $"R:{leftQuadParent.localRotation.eulerAngles:F1}\n";
+                status += $"S:{leftQuadParent.localScale:F6}\n";
+                status += $"\nRight Eye:\n";
+                status += $"P:{rightQuadParent.localPosition:F3}\n";
+                status += $"R:{rightQuadParent.localRotation.eulerAngles:F1}\n";
+                status += $"S:{rightQuadParent.localScale:F6}\n";
+                status += $"</align>";
+            }
+
+            status += "\nPress <color=#00FF00>Y Button (Left)</color> for Instructions.";
+            hudText.text = status;
+        }
     }
 
     void InitializeControllers()
@@ -193,19 +242,70 @@ public class StereoQuadAdjustment : MonoBehaviour
 
         if (rightBButton && !previousRightBButtonState)
         {
-            // Cycle adjustment mode
-            currentAdjustmentMode = (AdjustmentMode)(((int)currentAdjustmentMode + 1) % System.Enum.GetNames(typeof(AdjustmentMode)).Length);
+            if (showInstructions)
+            {
+                // Do nothing
+            }
+            else
+            {
+                // Cycle adjustment mode
+                currentAdjustmentMode = (AdjustmentMode)(((int)currentAdjustmentMode + 1) % System.Enum.GetNames(typeof(AdjustmentMode)).Length);
+            }
             UpdateHUD();
         }
 
         previousRightBButtonState = rightBButton;
+
+        // Toggle HUD visibility
+        leftController.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out bool leftThumbstickButton);
+
+        if (leftThumbstickButton && !previousLeftThumbstickButtonState)
+        {
+            isHUDVisible = !isHUDVisible;
+            UpdateHUD();
+        }
+
+        previousLeftThumbstickButtonState = leftThumbstickButton;
+
+        // Toggle Instructions
+        leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool leftYButton); // Y Button
+
+        if (leftYButton && !previousLeftYButtonState)
+        {
+            showInstructions = !showInstructions;
+            UpdateHUD();
+        }
+
+        previousLeftYButtonState = leftYButton;
+
+        // Handle freezing frames using Right Trigger
+        rightController.TryGetFeatureValue(CommonUsages.trigger, out float rightTriggerValue);
+
+        if (rightTriggerValue > 0.8f && !previousRightTriggerPressed)
+        {
+            Debug.Log("Right trigger pressed - toggling freeze frames");
+            ToggleFreezeFrames();
+        }
+
+        previousRightTriggerPressed = rightTriggerValue > 0.8f;
+
+        // Handle cycling profiles using Left Trigger
+        leftController.TryGetFeatureValue(CommonUsages.trigger, out float leftTriggerValue);
+
+        if (leftTriggerValue > 0.8f && !previousLeftTriggerPressed)
+        {
+            Debug.Log("Left trigger pressed - cycling profiles");
+            CycleProfiles();
+        }
+
+        previousLeftTriggerPressed = leftTriggerValue > 0.8f;
 
         // Adjust quads or speeds
         if (currentAdjustmentMode == AdjustmentMode.Speed)
         {
             AdjustSpeeds();
         }
-        else
+        else if (currentAdjustmentMode != AdjustmentMode.None)
         {
             AdjustQuad(leftController, leftQuadParent);
             AdjustQuad(rightController, rightQuadParent);
@@ -231,16 +331,6 @@ public class StereoQuadAdjustment : MonoBehaviour
 
         previousLeftXButtonState = leftXButton;
 
-        // Handle profile switching
-        leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool leftYButton); // Y Button
-
-        if (leftYButton && !previousLeftYButtonState)
-        {
-            CycleProfiles();
-        }
-
-        previousLeftYButtonState = leftYButton;
-
         // Create new profile
         rightController.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out bool rightThumbstickButton);
 
@@ -250,6 +340,10 @@ public class StereoQuadAdjustment : MonoBehaviour
         }
 
         previousRightThumbstickButtonState = rightThumbstickButton;
+
+        // Manipulate quads with grip
+        ManipulateQuadWithGrip(leftController, leftQuadParent, ref isLeftQuadGrabbed, ref leftQuadGrabOffset, ref leftQuadGrabRotationOffset);
+        ManipulateQuadWithGrip(rightController, rightQuadParent, ref isRightQuadGrabbed, ref rightQuadGrabOffset, ref rightQuadGrabRotationOffset);
     }
 
     private void AdjustQuad(InputDevice controller, Transform quadParent)
@@ -418,13 +512,6 @@ public class StereoQuadAdjustment : MonoBehaviour
         UpdateHUD();
     }
 
-    private void CycleProfiles()
-    {
-        currentProfileIndex = (currentProfileIndex + 1) % profiles.Count;
-        LoadProfile(profiles[currentProfileIndex]);
-        Debug.Log($"Switched to profile '{profiles[currentProfileIndex].profileName}'");
-    }
-
     private void CreateNewProfile()
     {
         string newProfileName = $"Profile_{DateTime.Now.ToString("yyyyMMdd_HHmmss")}";
@@ -453,30 +540,17 @@ public class StereoQuadAdjustment : MonoBehaviour
         Debug.Log($"Created new profile '{newProfile.profileName}'");
     }
 
-    private void LoadDefaultProfiles()
+    private void CycleProfiles()
     {
-        // Copy default profiles from Assets folder to persistent data path on first run
-        string defaultProfilesPath = Path.Combine(Application.streamingAssetsPath, "Profiles");
-        if (Directory.Exists(defaultProfilesPath))
+        if (profiles.Count == 0)
         {
-            Directory.CreateDirectory(profilesDirectory);
+            Debug.LogWarning("No profiles available to cycle through.");
+            return;
+        }
 
-            string[] files = Directory.GetFiles(defaultProfilesPath, "*.json");
-            foreach (string file in files)
-            {
-                string fileName = Path.GetFileName(file);
-                string destFile = Path.Combine(profilesDirectory, fileName);
-                if (!File.Exists(destFile))
-                {
-                    File.Copy(file, destFile);
-                    Debug.Log($"Copied default profile '{fileName}' to '{destFile}'");
-                }
-            }
-        }
-        else
-        {
-            Debug.LogWarning("No default profiles found in StreamingAssets/Profiles");
-        }
+        currentProfileIndex = (currentProfileIndex + 1) % profiles.Count;
+        LoadProfile(profiles[currentProfileIndex]);
+        Debug.Log($"Switched to profile '{profiles[currentProfileIndex].profileName}'");
     }
 
     [Serializable]
@@ -497,6 +571,72 @@ public class StereoQuadAdjustment : MonoBehaviour
         public float scaleSpeed;
         public float depthAdjustSpeed;
     }
+
+    private void ManipulateQuadWithGrip(InputDevice controller, Transform quadParent, ref bool isQuadGrabbed, ref Vector3 grabOffset, ref Quaternion grabRotationOffset)
+    {
+        controller.TryGetFeatureValue(CommonUsages.gripButton, out bool gripButton);
+
+        if (gripButton)
+        {
+            if (!isQuadGrabbed)
+            {
+                // Begin grabbing
+                if (controller.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 controllerPosition) &&
+                    controller.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion controllerRotation))
+                {
+                    isQuadGrabbed = true;
+                    // Calculate offset between controller and quad
+                    grabOffset = quadParent.position - controllerPosition;
+                    grabRotationOffset = Quaternion.Inverse(controllerRotation) * quadParent.rotation;
+                }
+            }
+            else
+            {
+                // Continue grabbing
+                if (controller.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 controllerPosition) &&
+                    controller.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion controllerRotation))
+                {
+                    quadParent.position = controllerPosition + grabOffset;
+                    quadParent.rotation = controllerRotation * grabRotationOffset;
+                }
+            }
+        }
+        else
+        {
+            isQuadGrabbed = false;
+        }
+    }
+
+    private void ToggleFreezeFrames()
+    {
+        framesFrozen = !framesFrozen;
+
+        if (framesFrozen)
+        {
+            // Store original parent
+            leftQuadOriginalParent = leftQuadParent.parent;
+            rightQuadOriginalParent = rightQuadParent.parent;
+
+            // Set freeze point to current position of quads
+            freezePoint.position = leftQuadParent.position;
+            freezePoint.rotation = leftQuadParent.rotation;
+
+            // Reparent quads to freeze point
+            leftQuadParent.parent = freezePoint;
+            rightQuadParent.parent = freezePoint;
+
+            Debug.Log("Frames frozen. Quads are now attached to freeze point.");
+        }
+        else
+        {
+            // Reattach quads to their original parent
+            leftQuadParent.parent = leftQuadOriginalParent;
+            rightQuadParent.parent = rightQuadOriginalParent;
+
+            Debug.Log("Frames unfrozen. Quads are now attached to the camera.");
+        }
+    }
+
 
     void OnEnable()
     {
@@ -527,6 +667,32 @@ public class StereoQuadAdjustment : MonoBehaviour
         {
             defaultScale = new Vector3(0.0005599085f, 0.0005599085f, 0.0005599085f);
             Debug.Log("Corrected default scale values");
+        }
+    }
+
+    private void LoadDefaultProfiles()
+    {
+        // Copy default profiles from Assets folder to persistent data path on first run
+        string defaultProfilesPath = Path.Combine(Application.streamingAssetsPath, "Profiles");
+        if (Directory.Exists(defaultProfilesPath))
+        {
+            Directory.CreateDirectory(profilesDirectory);
+
+            string[] files = Directory.GetFiles(defaultProfilesPath, "*.json");
+            foreach (string file in files)
+            {
+                string fileName = Path.GetFileName(file);
+                string destFile = Path.Combine(profilesDirectory, fileName);
+                if (!File.Exists(destFile))
+                {
+                    File.Copy(file, destFile);
+                    Debug.Log($"Copied default profile '{fileName}' to '{destFile}'");
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("No default profiles found in StreamingAssets/Profiles");
         }
     }
 }
