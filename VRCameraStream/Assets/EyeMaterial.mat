@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: EyeMaterial
-  m_Shader: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
+  m_Shader: {fileID: 4800000, guid: daeb5ae6fc5ed3a4bbbc03fff98886ed, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -63,14 +63,23 @@ Material:
     m_Floats:
     - _BumpScale: 1
     - _Cutoff: 0.5
+    - _Cx: 687.27814
+    - _Cy: 388.52698
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
+    - _Fx: 497.50003
+    - _Fy: 502.86627
     - _GlossMapScale: 1
     - _Glossiness: 0.5
     - _GlossyReflections: 1
+    - _K1: -0.23657367
+    - _K2: 0.04110457
+    - _K3: -0.00263397
     - _Metallic: 0
     - _Mode: 0
     - _OcclusionStrength: 1
+    - _P1: -0.00055951
+    - _P2: -0.00124154
     - _Parallax: 0.02
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1

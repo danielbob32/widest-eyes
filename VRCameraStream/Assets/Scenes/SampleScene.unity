@@ -202,10 +202,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   leftQuadParent: {fileID: 97742414}
   rightQuadParent: {fileID: 1280055579}
-  statusText: {fileID: 0}
-  positionSpeed: 0.001
-  rotationSpeed: 0.5
-  scaleSpeed: 0.001
+  mainCamera: {fileID: 658845675}
+  defaultPosition: {x: 0.020019, y: -0.090027, z: 1}
+  defaultRotation: {x: 0, y: 180, z: 0}
+  defaultScale: {x: 0.0005599085, y: 0.0005599085, z: 0.0005599085}
+  activeColor: {r: 1, g: 0, b: 0, a: 1}
+  inactiveColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  hudScale: 0.003
+  hudOffset: {x: 0.3, y: 0.1, z: 0.5}
+  rotationSpeed: 0.1
+  positionSpeed: 1
+  scaleSpeed: 0.1
+  depthAdjustSpeed: 0.00001
+  thumbstickDeadzone: 0.1
 --- !u!4 &97742414 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
@@ -930,7 +939,7 @@ PrefabInstance:
     - target: {fileID: -7635826562936255635, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
-      objectReference: {fileID: 2100000, guid: 8193f41b5bf3d8943973c22c83931f1f, type: 2}
+      objectReference: {fileID: 2100000, guid: e24ed054695adae4a8a8bce6005484aa, type: 2}
     - target: {fileID: 919132149155446097, guid: 4f0f23fa4fdfed642b7e707b43dc0557, type: 3}
       propertyPath: m_Name
       value: square_right
@@ -1507,7 +1516,7 @@ PrefabInstance:
     - target: {fileID: -7635826562936255635, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
-      objectReference: {fileID: 2100000, guid: 837890e52903e2c45975c024c272020a, type: 2}
+      objectReference: {fileID: 2100000, guid: e24ed054695adae4a8a8bce6005484aa, type: 2}
     - target: {fileID: 919132149155446097, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
       propertyPath: m_Name
       value: square_left
@@ -1632,8 +1641,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8d08072ee88e06345a0797d723a262ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  LeftEyeMaterial: {fileID: 2100000, guid: 837890e52903e2c45975c024c272020a, type: 2}
-  RightEyeMaterial: {fileID: 2100000, guid: 8193f41b5bf3d8943973c22c83931f1f, type: 2}
+  EyeMaterial: {fileID: 2100000, guid: e24ed054695adae4a8a8bce6005484aa, type: 2}
   cameraIndex: 1
   requestedWidth: 2560
   requestedHeight: 720
