@@ -209,7 +209,7 @@ MonoBehaviour:
   activeColor: {r: 1, g: 0, b: 0, a: 1}
   inactiveColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
   hudScale: 0.003
-  hudOffset: {x: 0.3, y: 0.1, z: 0.5}
+  hudOffset: {x: 0.15, y: 0.06, z: 0.5}
   rotationSpeed: 0.1
   positionSpeed: 1
   scaleSpeed: 0.1

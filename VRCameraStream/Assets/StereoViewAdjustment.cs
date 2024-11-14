@@ -51,6 +51,13 @@ public class StereoQuadAdjustment : MonoBehaviour
     private bool previousRightBButtonState = false;
     private bool previousRightAButtonState = false;
     private bool previousLeftXButtonState = false;
+    private bool previousLeftYButtonState = false;
+    private bool previousRightThumbstickButtonState = false;
+
+    // Profile Management
+    private List<StereoAdjustmentProfile> profiles = new List<StereoAdjustmentProfile>();
+    private int currentProfileIndex = 0;
+    private string profilesDirectory;
 
     void Start()
     {
@@ -70,8 +77,21 @@ public class StereoQuadAdjustment : MonoBehaviour
 
         InitializeControllers();
         CreateHUD();
-        ResetQuads();
-        LoadAdjustmentsFromFile();
+
+        // Set profiles directory
+        profilesDirectory = Path.Combine(Application.persistentDataPath, "Profiles");
+
+        LoadDefaultProfiles();
+        LoadProfilesFromDisk();
+
+        if (profiles.Count > 0)
+        {
+            LoadProfile(profiles[currentProfileIndex]);
+        }
+        else
+        {
+            ResetQuads();
+        }
     }
 
     void CreateHUD()
@@ -111,7 +131,7 @@ public class StereoQuadAdjustment : MonoBehaviour
         hudText.text = "STEREO ADJUSTMENT\nInitializing...";
 
         RectTransform rectTransform = textObj.GetComponent<RectTransform>();
-        rectTransform.sizeDelta = new Vector2(300, 150);
+        rectTransform.sizeDelta = new Vector2(300, 200);
     }
 
     void UpdateHUD()
@@ -119,6 +139,7 @@ public class StereoQuadAdjustment : MonoBehaviour
         if (hudText == null) return;
 
         string status = "<color=#00FF00>STEREO ADJ</color>\n";
+        status += $"Profile: {profiles[currentProfileIndex].profileName}\n";
         status += $"Mode: <color=#00FF00>{currentAdjustmentMode}</color>\n";
 
         if (currentAdjustmentMode == AdjustmentMode.Speed)
@@ -195,7 +216,7 @@ public class StereoQuadAdjustment : MonoBehaviour
 
         if (rightAButton && !previousRightAButtonState)
         {
-            SaveAdjustmentsToFile();
+            SaveCurrentProfile();
         }
 
         previousRightAButtonState = rightAButton;
@@ -209,6 +230,26 @@ public class StereoQuadAdjustment : MonoBehaviour
         }
 
         previousLeftXButtonState = leftXButton;
+
+        // Handle profile switching
+        leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool leftYButton); // Y Button
+
+        if (leftYButton && !previousLeftYButtonState)
+        {
+            CycleProfiles();
+        }
+
+        previousLeftYButtonState = leftYButton;
+
+        // Create new profile
+        rightController.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out bool rightThumbstickButton);
+
+        if (rightThumbstickButton && !previousRightThumbstickButtonState)
+        {
+            CreateNewProfile();
+        }
+
+        previousRightThumbstickButtonState = rightThumbstickButton;
     }
 
     private void AdjustQuad(InputDevice controller, Transform quadParent)
@@ -311,10 +352,11 @@ public class StereoQuadAdjustment : MonoBehaviour
         UpdateHUD();
     }
 
-    private void SaveAdjustmentsToFile()
+    private void SaveCurrentProfile()
     {
-        StereoAdjustmentData data = new StereoAdjustmentData
+        StereoAdjustmentProfile profile = new StereoAdjustmentProfile
         {
+            profileName = profiles[currentProfileIndex].profileName,
             leftQuadPosition = leftQuadParent.localPosition,
             leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
             leftQuadScale = leftQuadParent.localScale,
@@ -329,46 +371,119 @@ public class StereoQuadAdjustment : MonoBehaviour
             depthAdjustSpeed = this.depthAdjustSpeed
         };
 
-        string json = JsonUtility.ToJson(data, true);
-        string path = Path.Combine(Application.persistentDataPath, "StereoAdjustment.json");
-        File.WriteAllText(path, json);
+        profiles[currentProfileIndex] = profile;
+        SaveProfileToFile(profile);
 
-        Debug.Log($"Adjustments saved to {path}");
+        Debug.Log($"Profile '{profile.profileName}' saved.");
     }
 
-    private void LoadAdjustmentsFromFile()
+    private void SaveProfileToFile(StereoAdjustmentProfile profile)
     {
-        string path = Path.Combine(Application.persistentDataPath, "StereoAdjustment.json");
-        if (File.Exists(path))
+        string json = JsonUtility.ToJson(profile, true);
+        string path = Path.Combine(profilesDirectory, $"{profile.profileName}.json");
+        Directory.CreateDirectory(profilesDirectory);
+        File.WriteAllText(path, json);
+        Debug.Log($"Profile '{profile.profileName}' saved to {path}");
+    }
+
+    private void LoadProfilesFromDisk()
+    {
+        profiles.Clear();
+        Directory.CreateDirectory(profilesDirectory);
+        string[] files = Directory.GetFiles(profilesDirectory, "*.json");
+        foreach (string file in files)
         {
-            string json = File.ReadAllText(path);
-            StereoAdjustmentData data = JsonUtility.FromJson<StereoAdjustmentData>(json);
+            string json = File.ReadAllText(file);
+            StereoAdjustmentProfile profile = JsonUtility.FromJson<StereoAdjustmentProfile>(json);
+            profiles.Add(profile);
+            Debug.Log($"Loaded profile '{profile.profileName}'");
+        }
+    }
 
-            leftQuadParent.localPosition = data.leftQuadPosition;
-            leftQuadParent.localRotation = Quaternion.Euler(data.leftQuadRotation);
-            leftQuadParent.localScale = data.leftQuadScale;
+    private void LoadProfile(StereoAdjustmentProfile profile)
+    {
+        leftQuadParent.localPosition = profile.leftQuadPosition;
+        leftQuadParent.localRotation = Quaternion.Euler(profile.leftQuadRotation);
+        leftQuadParent.localScale = profile.leftQuadScale;
 
-            rightQuadParent.localPosition = data.rightQuadPosition;
-            rightQuadParent.localRotation = Quaternion.Euler(data.rightQuadRotation);
-            rightQuadParent.localScale = data.rightQuadScale;
+        rightQuadParent.localPosition = profile.rightQuadPosition;
+        rightQuadParent.localRotation = Quaternion.Euler(profile.rightQuadRotation);
+        rightQuadParent.localScale = profile.rightQuadScale;
 
-            this.positionSpeed = data.positionSpeed;
-            this.rotationSpeed = data.rotationSpeed;
-            this.scaleSpeed = data.scaleSpeed;
-            this.depthAdjustSpeed = data.depthAdjustSpeed;
+        this.positionSpeed = profile.positionSpeed;
+        this.rotationSpeed = profile.rotationSpeed;
+        this.scaleSpeed = profile.scaleSpeed;
+        this.depthAdjustSpeed = profile.depthAdjustSpeed;
 
-            Debug.Log($"Adjustments loaded from {path}");
-            UpdateHUD();
+        UpdateHUD();
+    }
+
+    private void CycleProfiles()
+    {
+        currentProfileIndex = (currentProfileIndex + 1) % profiles.Count;
+        LoadProfile(profiles[currentProfileIndex]);
+        Debug.Log($"Switched to profile '{profiles[currentProfileIndex].profileName}'");
+    }
+
+    private void CreateNewProfile()
+    {
+        string newProfileName = $"Profile_{DateTime.Now.ToString("yyyyMMdd_HHmmss")}";
+        StereoAdjustmentProfile newProfile = new StereoAdjustmentProfile
+        {
+            profileName = newProfileName,
+            leftQuadPosition = leftQuadParent.localPosition,
+            leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
+            leftQuadScale = leftQuadParent.localScale,
+
+            rightQuadPosition = rightQuadParent.localPosition,
+            rightQuadRotation = rightQuadParent.localRotation.eulerAngles,
+            rightQuadScale = rightQuadParent.localScale,
+
+            positionSpeed = this.positionSpeed,
+            rotationSpeed = this.rotationSpeed,
+            scaleSpeed = this.scaleSpeed,
+            depthAdjustSpeed = this.depthAdjustSpeed
+        };
+
+        profiles.Add(newProfile);
+        currentProfileIndex = profiles.Count - 1;
+        SaveProfileToFile(newProfile);
+
+        UpdateHUD();
+        Debug.Log($"Created new profile '{newProfile.profileName}'");
+    }
+
+    private void LoadDefaultProfiles()
+    {
+        // Copy default profiles from Assets folder to persistent data path on first run
+        string defaultProfilesPath = Path.Combine(Application.streamingAssetsPath, "Profiles");
+        if (Directory.Exists(defaultProfilesPath))
+        {
+            Directory.CreateDirectory(profilesDirectory);
+
+            string[] files = Directory.GetFiles(defaultProfilesPath, "*.json");
+            foreach (string file in files)
+            {
+                string fileName = Path.GetFileName(file);
+                string destFile = Path.Combine(profilesDirectory, fileName);
+                if (!File.Exists(destFile))
+                {
+                    File.Copy(file, destFile);
+                    Debug.Log($"Copied default profile '{fileName}' to '{destFile}'");
+                }
+            }
         }
         else
         {
-            Debug.Log("No saved adjustments found.");
+            Debug.LogWarning("No default profiles found in StreamingAssets/Profiles");
         }
     }
 
     [Serializable]
-    private class StereoAdjustmentData
+    public class StereoAdjustmentProfile
     {
+        public string profileName;
+
         public Vector3 leftQuadPosition;
         public Vector3 leftQuadRotation;
         public Vector3 leftQuadScale;
