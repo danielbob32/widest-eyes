@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using TMPro;
 using System.IO;
 using System;
-
+using System.Collections;
 public class StereoQuadAdjustment : MonoBehaviour
 {
     [Header("References")]
@@ -19,10 +19,12 @@ public class StereoQuadAdjustment : MonoBehaviour
     [SerializeField] private Vector3 defaultScale = new Vector3(0.0005599085f, 0.0005599085f, 0.0005599085f);
 
     [Header("HUD Settings")]
-    [SerializeField] private Color activeColor = Color.green;
-    [SerializeField] private Color inactiveColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-    [SerializeField] private float hudScale = 0.003f;
-    [SerializeField] private Vector3 hudOffset = new Vector3(0.15f, 0.06f, 0.5f); // Updated HUD position
+    [SerializeField] private float hudScale = 0.002f;
+    [SerializeField] private Vector3 hudOffset = new Vector3(0.25f, 0.02f, 0.5f);
+    [SerializeField] private Color hudTitleColor = new Color(0.1f, 0.1f, 1f); // Cyan-ish
+    [SerializeField] private Color hudHighlightColor = new Color(1f, 0.85f, 0.4f); // Warm yellow
+    [SerializeField] private Color hudTextColor = new Color(0.6f, 0.8f, 1f); // Almost white
+    [SerializeField] private Color hudSubtitleColor = new Color(0.1f, 0.1f, 1f); // Light blue
     private TextMeshProUGUI hudText;
     private GameObject hudObj;
 
@@ -32,31 +34,35 @@ public class StereoQuadAdjustment : MonoBehaviour
     [SerializeField] private float scaleSpeed = 0.1f;
     [SerializeField] private float depthAdjustSpeed = 0.00001f;
     [SerializeField] private float thumbstickDeadzone = 0.1f;
-
     private InputDevice leftController;
     private InputDevice rightController;
+
+    [Header("Calibration Settings")]
+    [SerializeField] private Color calibrationTextColor = new Color(1f, 0.5f, 0.5f); // Pinkish for calibration
+    [SerializeField] private Vector3 defaultCalibrationStartPosition = new Vector3(0.025f, -0.090027f, 1f);
+    [SerializeField] private float eyeSeparationOffset = 0.05f; // How far apart to move eyes initially
 
     // Adjustment Modes
     public enum AdjustmentMode
     {
-        Position,
-        Rotation,
+        Move,
+        Rotate,
         Depth,
-        Speed, // Mode for adjusting speeds
-        None // No adjustments
+        None
     }
 
-    private AdjustmentMode currentAdjustmentMode = AdjustmentMode.Position;
+    private AdjustmentMode leftEyeMode = AdjustmentMode.None;
+    private AdjustmentMode rightEyeMode = AdjustmentMode.None;
 
     // Button States
-    private bool previousRightBButtonState = false;
-    private bool previousRightAButtonState = false;
-    private bool previousLeftXButtonState = false;
-    private bool previousLeftYButtonState = false;
-    private bool previousRightThumbstickButtonState = false;
-    private bool previousLeftThumbstickButtonState = false;
+    private bool isInCalibration = false;
+    private bool showingCalibrationInstructions = false;
     private bool previousLeftTriggerPressed = false;
     private bool previousRightTriggerPressed = false;
+    private bool previousLeftXButtonState = false;
+    private bool previousLeftYButtonState = false;
+    private bool previousRightAButtonState = false;
+    private bool previousRightBButtonState = false;
 
     // Profile Management
     private List<StereoAdjustmentProfile> profiles = new List<StereoAdjustmentProfile>();
@@ -74,11 +80,6 @@ public class StereoQuadAdjustment : MonoBehaviour
     private Vector3 rightQuadGrabOffset;
     private Quaternion leftQuadGrabRotationOffset;
     private Quaternion rightQuadGrabRotationOffset;
-    private Transform freezePoint;
-    // Freeze Frames
-    private bool framesFrozen = false;
-    private Transform leftQuadOriginalParent;
-    private Transform rightQuadOriginalParent;
 
     void Start()
     {
@@ -90,33 +91,48 @@ public class StereoQuadAdjustment : MonoBehaviour
                 mainCamera = FindObjectOfType<Camera>();
                 if (mainCamera == null)
                 {
-                    Debug.LogError("No camera found in scene! Please assign a camera in the inspector.");
+                    Debug.LogError("No camera found in scene!");
                     return;
                 }
             }
         }
 
         InitializeControllers();
-        CreateHUD();
+
 
         // Set profiles directory
         profilesDirectory = Path.Combine(Application.persistentDataPath, "Profiles");
+        Directory.CreateDirectory(profilesDirectory);
 
-        LoadDefaultProfiles();
         LoadProfilesFromDisk();
+        if (profiles.Count == 0)
+        {
+            CreateDefaultProfile();
+        }
+        CreateHUD();
+        LoadProfile(profiles[currentProfileIndex]);
+    }
 
-        if (profiles.Count > 0)
+    private void CreateDefaultProfile()
+    {
+        StereoAdjustmentProfile defaultProfile = new StereoAdjustmentProfile
         {
-            LoadProfile(profiles[currentProfileIndex]);
-        }
-        else
-        {
-            ResetQuads();
-        }
-            // Create a freeze point in the scene
-        freezePoint = new GameObject("FreezePoint").transform;
-        freezePoint.position = mainCamera.transform.position + mainCamera.transform.forward * 1.0f; // 1 meter in front of the camera
-        freezePoint.rotation = Quaternion.identity;
+            profileName = "Default",
+            leftQuadPosition = defaultPosition,
+            leftQuadRotation = defaultRotation,
+            leftQuadScale = defaultScale,
+            rightQuadPosition = defaultPosition,
+            rightQuadRotation = defaultRotation,
+            rightQuadScale = defaultScale,
+            positionSpeed = this.positionSpeed,
+            rotationSpeed = this.rotationSpeed,
+            scaleSpeed = this.scaleSpeed,
+            depthAdjustSpeed = this.depthAdjustSpeed
+        };
+
+        profiles.Add(defaultProfile);
+        currentProfileIndex = 0;  
+        SaveProfileToFile(defaultProfile);
     }
 
     void CreateHUD()
@@ -133,87 +149,110 @@ public class StereoQuadAdjustment : MonoBehaviour
 
         hudObj.transform.parent = mainCamera.transform;
         hudObj.transform.localPosition = hudOffset;
-        hudObj.transform.localRotation = Quaternion.identity;
+        hudObj.transform.localRotation = Quaternion.Euler(0, 0, 0);
         hudObj.transform.localScale = Vector3.one * hudScale;
 
         Canvas canvas = hudObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
         canvas.worldCamera = mainCamera;
 
-        CanvasScaler scaler = hudObj.AddComponent<CanvasScaler>();
-        scaler.scaleFactor = 1;
-        scaler.dynamicPixelsPerUnit = 100;
+        // Create shadow text (background)
+        GameObject shadowObj = new GameObject("ShadowText");
+        shadowObj.transform.SetParent(hudObj.transform, false);
+        shadowObj.layer = LayerMask.NameToLayer("UI");
 
+        var shadowText = shadowObj.AddComponent<TextMeshProUGUI>();
+        shadowText.fontSize = 8;
+        shadowText.color = Color.black;
+        shadowText.font = TMP_Settings.defaultFontAsset;
+        shadowText.alignment = TextAlignmentOptions.Left;
+        shadowText.enableWordWrapping = true;
+
+        // Main text
         GameObject textObj = new GameObject("HUDText");
         textObj.transform.SetParent(hudObj.transform, false);
         textObj.layer = LayerMask.NameToLayer("UI");
 
         hudText = textObj.AddComponent<TextMeshProUGUI>();
-        hudText.fontSize = 8; // Adjusted font size
-        hudText.color = activeColor;
+        hudText.fontSize = 8;
+        hudText.color = hudTextColor;
         hudText.font = TMP_Settings.defaultFontAsset;
-        hudText.alignment = TextAlignmentOptions.Center; // Adjusted alignment
-        hudText.text = "STEREO ADJUSTMENT\nInitializing...";
+        hudText.alignment = TextAlignmentOptions.Left;
+        hudText.enableWordWrapping = true;
 
-        RectTransform rectTransform = textObj.GetComponent<RectTransform>();
-        rectTransform.sizeDelta = new Vector2(400, 400);
+        // Position shadow slightly offset
+        var shadowRect = shadowObj.GetComponent<RectTransform>();
+        shadowRect.sizeDelta = new Vector2(330, 180);
+        shadowRect.anchoredPosition = new Vector2(0.5f, -0.5f);
+
+        var textRect = textObj.GetComponent<RectTransform>();
+        textRect.sizeDelta = new Vector2(330, 180);
+        textRect.anchoredPosition = Vector2.zero;
+
+        UpdateHUD();
     }
-
     void UpdateHUD()
     {
-        if (hudText == null) return;
-        if (!isHUDVisible)
+        if (hudText == null || !isHUDVisible)
         {
-            hudText.text = string.Empty;
+            if (hudText != null) hudText.text = string.Empty;
             return;
         }
 
-        if (showInstructions)
+        string coloredText;
+        string plainText;
+
+        if (showingCalibrationInstructions)
         {
-            string instructions = "<color=#00FF00><b>Instructions</b></color>\n";
-            instructions += "Press <color=#00FF00>Y Button (Left)</color> to toggle instructions.\n";
-            instructions += "Press <color=#00FF00>B Button (Right)</color> to cycle modes.\n";
-            instructions += "Press <color=#00FF00>A Button (Right)</color> to save profile.\n";
-            instructions += "Press <color=#00FF00>X Button (Left)</color> to reset quads.\n";
-            instructions += "Click <color=#00FF00>Left Thumbstick</color> to toggle HUD.\n";
-            instructions += "Click <color=#00FF00>Right Thumbstick</color> to create new profile.\n";
-            instructions += "Hold <color=#00FF00>Grip</color> to grab quads.\n";
-            instructions += "Press <color=#00FF00>Left Trigger</color> to cycle profiles.\n";
-            instructions += "Press <color=#00FF00>Right Trigger</color> to freeze/unfreeze frames.\n";
-            instructions += "\nPress <color=#00FF00>Y Button (Left)</color> to exit instructions.";
-            hudText.text = instructions;
+            coloredText = $"<color=#{ColorUtility.ToHtmlStringRGB(calibrationTextColor)}>CALIBRATION INSTRUCTIONS</color>\n\n";
+            coloredText += "1. Place three identical circles on a wall\n";
+            coloredText += "   in a horizontal line\n\n";
+            coloredText += "2. Stand about 2 meters away from the wall\n";
+            coloredText += "3. You will see two offset views\n";
+            coloredText += "4. Align them until the circles overlap perfectly\n\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Press A to begin calibration</color>\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Press B to cancel</color>";
+
+            plainText = coloredText.Replace($"<color=#{ColorUtility.ToHtmlStringRGB(calibrationTextColor)}>", "")
+                                .Replace($"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>", "")
+                                .Replace("</color>", "");
+        }
+        else if (isInCalibration)
+        {
+            coloredText = $"<color=#{ColorUtility.ToHtmlStringRGB(calibrationTextColor)}>CALIBRATION IN PROGRESS</color>\n\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Left Eye:</color> {leftEyeMode}\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Right Eye:</color> {rightEyeMode}\n\n";
+            coloredText += "1. Use triggers to change modes\n";
+            coloredText += "2. Use thumbsticks to adjust\n";
+            coloredText += "3. Align the circles to overlap\n\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Press A when alignment is perfect</color>\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Press B to cancel</color>";
+
+            plainText = coloredText.Replace($"<color=#{ColorUtility.ToHtmlStringRGB(calibrationTextColor)}>", "")
+                                .Replace($"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>", "")
+                                .Replace("</color>", "");
         }
         else
         {
-            string status = "<color=#00FF00>STEREO ADJ</color>\n";
-            status += $"Profile: {profiles[currentProfileIndex].profileName}\n";
-            status += $"Mode: <color=#00FF00>{currentAdjustmentMode}</color>\n";
+            // Your existing normal HUD code here
+            coloredText = $"<color=#{ColorUtility.ToHtmlStringRGB(hudTitleColor)}>STEREO ADJUSTMENT</color>\n\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Left Eye:</color> {leftEyeMode}\n";
+            coloredText += $"<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Right Eye:</color> {rightEyeMode}\n";
+            coloredText += $"\n<color=#{ColorUtility.ToHtmlStringRGB(hudTextColor)}>Hold Both Triggers for Controls</color>\n";
+            coloredText += $"\n<color=#{ColorUtility.ToHtmlStringRGB(hudHighlightColor)}>Hold Y to start calibration</color>";
 
-            if (currentAdjustmentMode == AdjustmentMode.Speed)
-            {
-                status += $"<align=left>\n";
-                status += $"Pos Speed: {positionSpeed:F3}\n";
-                status += $"Rot Speed: {rotationSpeed:F3}\n";
-                status += $"Scale Speed: {scaleSpeed:F3}\n";
-                status += $"Depth Speed: {depthAdjustSpeed:F6}\n";
-                status += $"</align>";
-            }
-            else
-            {
-                status += $"<align=left>\n";
-                status += $"Left Eye:\n";
-                status += $"P:{leftQuadParent.localPosition:F3}\n";
-                status += $"R:{leftQuadParent.localRotation.eulerAngles:F1}\n";
-                status += $"S:{leftQuadParent.localScale:F6}\n";
-                status += $"\nRight Eye:\n";
-                status += $"P:{rightQuadParent.localPosition:F3}\n";
-                status += $"R:{rightQuadParent.localRotation.eulerAngles:F1}\n";
-                status += $"S:{rightQuadParent.localScale:F6}\n";
-                status += $"</align>";
-            }
+            plainText = "STEREO ADJUSTMENT\n\n";
+            plainText += $"Left Eye: {leftEyeMode}\n";
+            plainText += $"Right Eye: {rightEyeMode}\n";
+            plainText += "\nHold Both Triggers for Controls\n";
+            plainText += "\nHold Y to start calibration";
+        }
 
-            status += "\nPress <color=#00FF00>Y Button (Left)</color> for Instructions.";
-            hudText.text = status;
+        hudText.text = coloredText;
+        var shadowText = hudObj.transform.Find("ShadowText")?.GetComponent<TextMeshProUGUI>();
+        if (shadowText != null)
+        {
+            shadowText.text = plainText;
         }
     }
 
@@ -222,8 +261,12 @@ public class StereoQuadAdjustment : MonoBehaviour
         var leftHandDevices = new List<InputDevice>();
         var rightHandDevices = new List<InputDevice>();
 
-        InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller, leftHandDevices);
-        InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, rightHandDevices);
+        InputDevices.GetDevicesWithCharacteristics(
+            InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller, 
+            leftHandDevices);
+        InputDevices.GetDevicesWithCharacteristics(
+            InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, 
+            rightHandDevices);
 
         if (leftHandDevices.Count > 0) leftController = leftHandDevices[0];
         if (rightHandDevices.Count > 0) rightController = rightHandDevices[0];
@@ -237,116 +280,170 @@ public class StereoQuadAdjustment : MonoBehaviour
             return;
         }
 
-        // Handle input to cycle adjustment modes
-        rightController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool rightBButton); // B Button
+        // Handle Mode Changes
+        HandleModeChanges();
 
-        if (rightBButton && !previousRightBButtonState)
+        // Handle adjustments
+        if (leftEyeMode != AdjustmentMode.None)
         {
-            if (showInstructions)
+            AdjustQuad(leftController, leftQuadParent, leftEyeMode);
+        }
+        
+        if (rightEyeMode != AdjustmentMode.None)
+        {
+            AdjustQuad(rightController, rightQuadParent, rightEyeMode);
+        }
+
+        // Check for both triggers pressed to show instructions
+        leftController.TryGetFeatureValue(CommonUsages.trigger, out float leftTriggerValue);
+        rightController.TryGetFeatureValue(CommonUsages.trigger, out float rightTriggerValue);
+        
+        if (leftTriggerValue > 0.8f && rightTriggerValue > 0.8f)
+        {
+            if (!showInstructions)
             {
-                // Do nothing
+                showInstructions = true;
+                UpdateHUD();
             }
-            else
-            {
-                // Cycle adjustment mode
-                currentAdjustmentMode = (AdjustmentMode)(((int)currentAdjustmentMode + 1) % System.Enum.GetNames(typeof(AdjustmentMode)).Length);
-            }
+        }
+        else if (showInstructions)
+        {
+            showInstructions = false;
             UpdateHUD();
         }
 
+        // Handle additional controls
+        HandleAdditionalControls();
+    }
+
+    private void HandleModeChanges()
+    {
+        // Left Eye Mode Change
+        leftController.TryGetFeatureValue(CommonUsages.trigger, out float leftTriggerValue);
+        if (leftTriggerValue > 0.8f && !previousLeftTriggerPressed)
+        {
+            leftEyeMode = (AdjustmentMode)(((int)leftEyeMode + 1) % (int)AdjustmentMode.None);
+            UpdateHUD();
+        }
+        previousLeftTriggerPressed = leftTriggerValue > 0.8f;
+
+        // Right Eye Mode Change
+        rightController.TryGetFeatureValue(CommonUsages.trigger, out float rightTriggerValue);
+        if (rightTriggerValue > 0.8f && !previousRightTriggerPressed)
+        {
+            rightEyeMode = (AdjustmentMode)(((int)rightEyeMode + 1) % (int)AdjustmentMode.None);
+            UpdateHUD();
+        }
+        previousRightTriggerPressed = rightTriggerValue > 0.8f;
+    }
+
+
+    private void HandleAdditionalControls()
+    {
+        // Get all button states
+        leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool leftYButton);
+        leftController.TryGetFeatureValue(CommonUsages.primaryButton, out bool leftXButton);
+        rightController.TryGetFeatureValue(CommonUsages.primaryButton, out bool rightAButton);
+        rightController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool rightBButton);
+
+        if (!isInCalibration && !showingCalibrationInstructions)
+        {
+            // Normal mode controls
+            
+            // Toggle Instructions with long press for calibration
+            if (leftYButton && !previousLeftYButtonState)
+            {
+                StartCoroutine(CheckForCalibrationStart());
+            }
+
+            // Save Profile
+            if (rightAButton && !previousRightAButtonState)
+            {
+                SaveCurrentProfile();
+            }
+
+            // Reset Position
+            if (leftXButton && !previousLeftXButtonState)
+            {
+                ResetQuads();
+            }
+
+            // New Profile
+            if (rightBButton && !previousRightBButtonState)
+            {
+                CreateNewProfile();
+            }
+        }
+        else if (showingCalibrationInstructions)
+        {
+            // Calibration instructions mode
+            if (rightAButton && !previousRightAButtonState)
+            {
+                BeginActualCalibration();
+            }
+            else if (rightBButton && !previousRightBButtonState)
+            {
+                showingCalibrationInstructions = false;
+                UpdateHUD();
+            }
+        }
+        else if (isInCalibration)
+        {
+            // Active calibration mode
+            if (rightAButton && !previousRightAButtonState)
+            {
+                FinishCalibration();
+            }
+            else if (rightBButton && !previousRightBButtonState)
+            {
+                isInCalibration = false;
+                ResetQuads();
+                UpdateHUD();
+            }
+        }
+
+        // Update previous button states
+        previousLeftYButtonState = leftYButton;
+        previousLeftXButtonState = leftXButton;
+        previousRightAButtonState = rightAButton;
         previousRightBButtonState = rightBButton;
 
-        // Toggle HUD visibility
-        leftController.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out bool leftThumbstickButton);
+        // Handle quad grabbing (always active)
+        ManipulateQuadWithGrip(leftController, leftQuadParent, ref isLeftQuadGrabbed, 
+            ref leftQuadGrabOffset, ref leftQuadGrabRotationOffset);
+        ManipulateQuadWithGrip(rightController, rightQuadParent, ref isRightQuadGrabbed, 
+            ref rightQuadGrabOffset, ref rightQuadGrabRotationOffset);
+    }
 
-        if (leftThumbstickButton && !previousLeftThumbstickButtonState)
+
+
+    // Add this coroutine to check for long press
+    private IEnumerator CheckForCalibrationStart()
+    {
+        float holdTime = 0f;
+        bool buttonStillHeld = true;
+
+        while (holdTime < 1.0f && buttonStillHeld) // 1 second hold time
         {
-            isHUDVisible = !isHUDVisible;
-            UpdateHUD();
+            holdTime += Time.deltaTime;
+            leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out buttonStillHeld);
+            yield return null;
         }
 
-        previousLeftThumbstickButtonState = leftThumbstickButton;
-
-        // Toggle Instructions
-        leftController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool leftYButton); // Y Button
-
-        if (leftYButton && !previousLeftYButtonState)
+        if (buttonStillHeld)
         {
+            // Long press detected - start calibration
+            StartCalibration();
+        }
+        else
+        {
+            // Short press - toggle instructions
             showInstructions = !showInstructions;
             UpdateHUD();
         }
-
-        previousLeftYButtonState = leftYButton;
-
-        // Handle freezing frames using Right Trigger
-        rightController.TryGetFeatureValue(CommonUsages.trigger, out float rightTriggerValue);
-
-        if (rightTriggerValue > 0.8f && !previousRightTriggerPressed)
-        {
-            Debug.Log("Right trigger pressed - toggling freeze frames");
-            ToggleFreezeFrames();
-        }
-
-        previousRightTriggerPressed = rightTriggerValue > 0.8f;
-
-        // Handle cycling profiles using Left Trigger
-        leftController.TryGetFeatureValue(CommonUsages.trigger, out float leftTriggerValue);
-
-        if (leftTriggerValue > 0.8f && !previousLeftTriggerPressed)
-        {
-            Debug.Log("Left trigger pressed - cycling profiles");
-            CycleProfiles();
-        }
-
-        previousLeftTriggerPressed = leftTriggerValue > 0.8f;
-
-        // Adjust quads or speeds
-        if (currentAdjustmentMode == AdjustmentMode.Speed)
-        {
-            AdjustSpeeds();
-        }
-        else if (currentAdjustmentMode != AdjustmentMode.None)
-        {
-            AdjustQuad(leftController, leftQuadParent);
-            AdjustQuad(rightController, rightQuadParent);
-        }
-
-        // Handle saving adjustments
-        rightController.TryGetFeatureValue(CommonUsages.primaryButton, out bool rightAButton); // A Button
-
-        if (rightAButton && !previousRightAButtonState)
-        {
-            SaveCurrentProfile();
-        }
-
-        previousRightAButtonState = rightAButton;
-
-        // Handle resetting adjustments
-        leftController.TryGetFeatureValue(CommonUsages.primaryButton, out bool leftXButton); // X Button
-
-        if (leftXButton && !previousLeftXButtonState)
-        {
-            ResetQuads();
-        }
-
-        previousLeftXButtonState = leftXButton;
-
-        // Create new profile
-        rightController.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out bool rightThumbstickButton);
-
-        if (rightThumbstickButton && !previousRightThumbstickButtonState)
-        {
-            CreateNewProfile();
-        }
-
-        previousRightThumbstickButtonState = rightThumbstickButton;
-
-        // Manipulate quads with grip
-        ManipulateQuadWithGrip(leftController, leftQuadParent, ref isLeftQuadGrabbed, ref leftQuadGrabOffset, ref leftQuadGrabRotationOffset);
-        ManipulateQuadWithGrip(rightController, rightQuadParent, ref isRightQuadGrabbed, ref rightQuadGrabOffset, ref rightQuadGrabRotationOffset);
     }
 
-    private void AdjustQuad(InputDevice controller, Transform quadParent)
+    private void AdjustQuad(InputDevice controller, Transform quadParent, AdjustmentMode mode)
     {
         if (controller.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 thumbstick))
         {
@@ -354,245 +451,61 @@ public class StereoQuadAdjustment : MonoBehaviour
             if (Mathf.Abs(thumbstick.x) < thumbstickDeadzone) thumbstick.x = 0;
             if (Mathf.Abs(thumbstick.y) < thumbstickDeadzone) thumbstick.y = 0;
 
-            switch (currentAdjustmentMode)
+            switch (mode)
             {
-                case AdjustmentMode.Position:
+                case AdjustmentMode.Move:
                     Vector3 movement = new Vector3(thumbstick.x, thumbstick.y, 0) * (positionSpeed * 0.001f);
                     quadParent.localPosition += movement;
                     break;
-                case AdjustmentMode.Rotation:
+
+                case AdjustmentMode.Rotate:
                     Vector3 currentRotation = quadParent.localRotation.eulerAngles;
                     float zRotationDelta = thumbstick.x * rotationSpeed;
                     currentRotation.z += zRotationDelta;
                     quadParent.localRotation = Quaternion.Euler(currentRotation);
                     break;
+
                 case AdjustmentMode.Depth:
-                    float depthChange = thumbstick.y * depthAdjustSpeed;
-                    Vector3 currentPosition = quadParent.localPosition;
-                    Vector3 currentScale = quadParent.localScale;
-
-                    currentPosition.z += depthChange;
-
-                    float scaleAdjustment = -depthChange * scaleSpeed;
-                    Vector3 newScale = currentScale + new Vector3(scaleAdjustment, scaleAdjustment, 0);
-
-                    if (newScale.x >= 0.0001f && newScale.y >= 0.0001f)
+                    float scaleChange = thumbstick.y * scaleSpeed * 0.0001f; // Made slower
+                    Vector3 newScale = quadParent.localScale + new Vector3(scaleChange, scaleChange, 0);
+                    if (newScale.x >= 0.00001f && newScale.y >= 0.00001f)
                     {
-                        quadParent.localPosition = currentPosition;
                         quadParent.localScale = newScale;
+                        // Also adjust position to maintain apparent size
+                        float depthChange = -scaleChange * 10f; // Proportional depth adjustment
+                        quadParent.localPosition += new Vector3(0, 0, depthChange);
                     }
 
+                    // Allow horizontal movement while in depth mode
                     float lateralMove = thumbstick.x * positionSpeed * 0.001f;
                     quadParent.localPosition += new Vector3(lateralMove, 0, 0);
-                    break;
+                    break; ;
             }
-        }
-
-        UpdateHUD();
-    }
-
-    private void AdjustSpeeds()
-    {
-        // Left controller adjusts Position and Rotation speeds
-        if (leftController.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 leftThumbstick))
-        {
-            // Apply deadzone
-            if (Mathf.Abs(leftThumbstick.x) < thumbstickDeadzone) leftThumbstick.x = 0;
-            if (Mathf.Abs(leftThumbstick.y) < thumbstickDeadzone) leftThumbstick.y = 0;
-
-            positionSpeed += leftThumbstick.y * 0.01f;
-            rotationSpeed += leftThumbstick.x * 0.01f;
-
-            positionSpeed = Mathf.Clamp(positionSpeed, 0.001f, 10f);
-            rotationSpeed = Mathf.Clamp(rotationSpeed, 0.01f, 10f);
-        }
-
-        // Right controller adjusts Scale and Depth speeds
-        if (rightController.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 rightThumbstick))
-        {
-            // Apply deadzone
-            if (Mathf.Abs(rightThumbstick.x) < thumbstickDeadzone) rightThumbstick.x = 0;
-            if (Mathf.Abs(rightThumbstick.y) < thumbstickDeadzone) rightThumbstick.y = 0;
-
-            scaleSpeed += rightThumbstick.y * 0.01f;
-            depthAdjustSpeed += rightThumbstick.x * 0.000001f;
-
-            scaleSpeed = Mathf.Clamp(scaleSpeed, 0.001f, 10f);
-            depthAdjustSpeed = Mathf.Clamp(depthAdjustSpeed, 0.000001f, 0.1f);
-        }
-
-        UpdateHUD();
-    }
-
-    private void ResetQuads()
-    {
-        if (leftQuadParent != null)
-        {
-            leftQuadParent.localPosition = defaultPosition;
-            leftQuadParent.localRotation = Quaternion.Euler(defaultRotation);
-            leftQuadParent.localScale = defaultScale;
-            Debug.Log($"Reset left quad to - Position: {leftQuadParent.localPosition:F6}, Rotation: {leftQuadParent.localRotation.eulerAngles:F6}, Scale: {leftQuadParent.localScale:F10}");
-        }
-
-        if (rightQuadParent != null)
-        {
-            rightQuadParent.localPosition = defaultPosition;
-            rightQuadParent.localRotation = Quaternion.Euler(defaultRotation);
-            rightQuadParent.localScale = defaultScale;
-            Debug.Log($"Reset right quad to - Position: {rightQuadParent.localPosition:F6}, Rotation: {rightQuadParent.localRotation.eulerAngles:F6}, Scale: {rightQuadParent.localScale:F10}");
-        }
-
-        currentAdjustmentMode = AdjustmentMode.Position;
-        UpdateHUD();
-    }
-
-    private void SaveCurrentProfile()
-    {
-        StereoAdjustmentProfile profile = new StereoAdjustmentProfile
-        {
-            profileName = profiles[currentProfileIndex].profileName,
-            leftQuadPosition = leftQuadParent.localPosition,
-            leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
-            leftQuadScale = leftQuadParent.localScale,
-
-            rightQuadPosition = rightQuadParent.localPosition,
-            rightQuadRotation = rightQuadParent.localRotation.eulerAngles,
-            rightQuadScale = rightQuadParent.localScale,
-
-            positionSpeed = this.positionSpeed,
-            rotationSpeed = this.rotationSpeed,
-            scaleSpeed = this.scaleSpeed,
-            depthAdjustSpeed = this.depthAdjustSpeed
-        };
-
-        profiles[currentProfileIndex] = profile;
-        SaveProfileToFile(profile);
-
-        Debug.Log($"Profile '{profile.profileName}' saved.");
-    }
-
-    private void SaveProfileToFile(StereoAdjustmentProfile profile)
-    {
-        string json = JsonUtility.ToJson(profile, true);
-        string path = Path.Combine(profilesDirectory, $"{profile.profileName}.json");
-        Directory.CreateDirectory(profilesDirectory);
-        File.WriteAllText(path, json);
-        Debug.Log($"Profile '{profile.profileName}' saved to {path}");
-    }
-
-    private void LoadProfilesFromDisk()
-    {
-        profiles.Clear();
-        Directory.CreateDirectory(profilesDirectory);
-        string[] files = Directory.GetFiles(profilesDirectory, "*.json");
-        foreach (string file in files)
-        {
-            string json = File.ReadAllText(file);
-            StereoAdjustmentProfile profile = JsonUtility.FromJson<StereoAdjustmentProfile>(json);
-            profiles.Add(profile);
-            Debug.Log($"Loaded profile '{profile.profileName}'");
+            UpdateHUD();
         }
     }
 
-    private void LoadProfile(StereoAdjustmentProfile profile)
-    {
-        leftQuadParent.localPosition = profile.leftQuadPosition;
-        leftQuadParent.localRotation = Quaternion.Euler(profile.leftQuadRotation);
-        leftQuadParent.localScale = profile.leftQuadScale;
-
-        rightQuadParent.localPosition = profile.rightQuadPosition;
-        rightQuadParent.localRotation = Quaternion.Euler(profile.rightQuadRotation);
-        rightQuadParent.localScale = profile.rightQuadScale;
-
-        this.positionSpeed = profile.positionSpeed;
-        this.rotationSpeed = profile.rotationSpeed;
-        this.scaleSpeed = profile.scaleSpeed;
-        this.depthAdjustSpeed = profile.depthAdjustSpeed;
-
-        UpdateHUD();
-    }
-
-    private void CreateNewProfile()
-    {
-        string newProfileName = $"Profile_{DateTime.Now.ToString("yyyyMMdd_HHmmss")}";
-        StereoAdjustmentProfile newProfile = new StereoAdjustmentProfile
-        {
-            profileName = newProfileName,
-            leftQuadPosition = leftQuadParent.localPosition,
-            leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
-            leftQuadScale = leftQuadParent.localScale,
-
-            rightQuadPosition = rightQuadParent.localPosition,
-            rightQuadRotation = rightQuadParent.localRotation.eulerAngles,
-            rightQuadScale = rightQuadParent.localScale,
-
-            positionSpeed = this.positionSpeed,
-            rotationSpeed = this.rotationSpeed,
-            scaleSpeed = this.scaleSpeed,
-            depthAdjustSpeed = this.depthAdjustSpeed
-        };
-
-        profiles.Add(newProfile);
-        currentProfileIndex = profiles.Count - 1;
-        SaveProfileToFile(newProfile);
-
-        UpdateHUD();
-        Debug.Log($"Created new profile '{newProfile.profileName}'");
-    }
-
-    private void CycleProfiles()
-    {
-        if (profiles.Count == 0)
-        {
-            Debug.LogWarning("No profiles available to cycle through.");
-            return;
-        }
-
-        currentProfileIndex = (currentProfileIndex + 1) % profiles.Count;
-        LoadProfile(profiles[currentProfileIndex]);
-        Debug.Log($"Switched to profile '{profiles[currentProfileIndex].profileName}'");
-    }
-
-    [Serializable]
-    public class StereoAdjustmentProfile
-    {
-        public string profileName;
-
-        public Vector3 leftQuadPosition;
-        public Vector3 leftQuadRotation;
-        public Vector3 leftQuadScale;
-
-        public Vector3 rightQuadPosition;
-        public Vector3 rightQuadRotation;
-        public Vector3 rightQuadScale;
-
-        public float positionSpeed;
-        public float rotationSpeed;
-        public float scaleSpeed;
-        public float depthAdjustSpeed;
-    }
-
-    private void ManipulateQuadWithGrip(InputDevice controller, Transform quadParent, ref bool isQuadGrabbed, ref Vector3 grabOffset, ref Quaternion grabRotationOffset)
+    private void ManipulateQuadWithGrip(InputDevice controller, Transform quadParent, ref bool isQuadGrabbed, 
+        ref Vector3 grabOffset, ref Quaternion grabRotationOffset)
     {
         controller.TryGetFeatureValue(CommonUsages.gripButton, out bool gripButton);
+        controller.TryGetFeatureValue(CommonUsages.trigger, out float triggerValue);
+        bool grabActive = gripButton && triggerValue > 0.8f;
 
-        if (gripButton)
+        if (grabActive)
         {
             if (!isQuadGrabbed)
             {
-                // Begin grabbing
                 if (controller.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 controllerPosition) &&
                     controller.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion controllerRotation))
                 {
                     isQuadGrabbed = true;
-                    // Calculate offset between controller and quad
                     grabOffset = quadParent.position - controllerPosition;
                     grabRotationOffset = Quaternion.Inverse(controllerRotation) * quadParent.rotation;
                 }
             }
             else
             {
-                // Continue grabbing
                 if (controller.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 controllerPosition) &&
                     controller.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion controllerRotation))
                 {
@@ -607,37 +520,131 @@ public class StereoQuadAdjustment : MonoBehaviour
         }
     }
 
-    private void ToggleFreezeFrames()
+    private void ResetQuads()
     {
-        framesFrozen = !framesFrozen;
-
-        if (framesFrozen)
+        if (leftQuadParent != null)
         {
-            // Store original parent
-            leftQuadOriginalParent = leftQuadParent.parent;
-            rightQuadOriginalParent = rightQuadParent.parent;
-
-            // Set freeze point to current position of quads
-            freezePoint.position = leftQuadParent.position;
-            freezePoint.rotation = leftQuadParent.rotation;
-
-            // Reparent quads to freeze point
-            leftQuadParent.parent = freezePoint;
-            rightQuadParent.parent = freezePoint;
-
-            Debug.Log("Frames frozen. Quads are now attached to freeze point.");
+            leftQuadParent.localPosition = defaultPosition;
+            leftQuadParent.localRotation = Quaternion.Euler(defaultRotation);
+            leftQuadParent.localScale = defaultScale;
         }
-        else
-        {
-            // Reattach quads to their original parent
-            leftQuadParent.parent = leftQuadOriginalParent;
-            rightQuadParent.parent = rightQuadOriginalParent;
 
-            Debug.Log("Frames unfrozen. Quads are now attached to the camera.");
+        if (rightQuadParent != null)
+        {
+            rightQuadParent.localPosition = defaultPosition;
+            rightQuadParent.localRotation = Quaternion.Euler(defaultRotation);
+            rightQuadParent.localScale = defaultScale;
+        }
+
+        leftEyeMode = AdjustmentMode.Move;
+        rightEyeMode = AdjustmentMode.Move;
+        UpdateHUD();
+    }
+
+    [Serializable]
+    public class StereoAdjustmentProfile
+    {
+        public string profileName;
+        public Vector3 leftQuadPosition;
+        public Vector3 leftQuadRotation;
+        public Vector3 leftQuadScale;
+        public Vector3 rightQuadPosition;
+        public Vector3 rightQuadRotation;
+        public Vector3 rightQuadScale;
+        public float positionSpeed;
+        public float rotationSpeed;
+        public float scaleSpeed;
+        public float depthAdjustSpeed;
+    }
+
+    private void SaveCurrentProfile()
+    {
+        if (profiles.Count == 0 || currentProfileIndex >= profiles.Count)
+        {
+            CreateDefaultProfile();
+        }
+        StereoAdjustmentProfile profile = new StereoAdjustmentProfile
+        {
+            profileName = profiles[currentProfileIndex].profileName,
+            leftQuadPosition = leftQuadParent.localPosition,
+            leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
+            leftQuadScale = leftQuadParent.localScale,
+            rightQuadPosition = rightQuadParent.localPosition,
+            rightQuadRotation = rightQuadParent.localRotation.eulerAngles,
+            rightQuadScale = rightQuadParent.localScale,
+            positionSpeed = this.positionSpeed,
+            rotationSpeed = this.rotationSpeed,
+            scaleSpeed = this.scaleSpeed,
+            depthAdjustSpeed = this.depthAdjustSpeed
+        };
+
+        profiles[currentProfileIndex] = profile;
+        SaveProfileToFile(profile);
+        Debug.Log($"Profile '{profile.profileName}' saved.");
+    }
+
+    private void SaveProfileToFile(StereoAdjustmentProfile profile)
+    {
+        string json = JsonUtility.ToJson(profile, true);
+        string path = Path.Combine(profilesDirectory, $"{profile.profileName}.json");
+        Directory.CreateDirectory(profilesDirectory);
+        File.WriteAllText(path, json);
+    }
+
+    private void LoadProfilesFromDisk()
+    {
+        profiles.Clear();
+        Directory.CreateDirectory(profilesDirectory);
+        string[] files = Directory.GetFiles(profilesDirectory, "*.json");
+        foreach (string file in files)
+        {
+            string json = File.ReadAllText(file);
+            StereoAdjustmentProfile profile = JsonUtility.FromJson<StereoAdjustmentProfile>(json);
+            profiles.Add(profile);
         }
     }
 
+    private void LoadProfile(StereoAdjustmentProfile profile)
+    {
+        leftQuadParent.localPosition = profile.leftQuadPosition;
+        leftQuadParent.localRotation = Quaternion.Euler(profile.leftQuadRotation);
+        leftQuadParent.localScale = profile.leftQuadScale;
 
+        rightQuadParent.localPosition = profile.rightQuadPosition;
+        rightQuadParent.localRotation = Quaternion.Euler(profile.rightQuadRotation);
+        rightQuadParent.localScale = profile.rightQuadScale;
+
+        positionSpeed = profile.positionSpeed;
+        rotationSpeed = profile.rotationSpeed;
+        scaleSpeed = profile.scaleSpeed;
+        depthAdjustSpeed = profile.depthAdjustSpeed;
+
+        UpdateHUD();
+    }
+
+    private void CreateNewProfile()
+    {
+        string newProfileName = $"Profile_{DateTime.Now.ToString("yyyyMMdd_HHmmss")}";
+        StereoAdjustmentProfile newProfile = new StereoAdjustmentProfile
+        {
+            profileName = newProfileName,
+            leftQuadPosition = leftQuadParent.localPosition,
+            leftQuadRotation = leftQuadParent.localRotation.eulerAngles,
+            leftQuadScale = leftQuadParent.localScale,
+            rightQuadPosition = rightQuadParent.localPosition,
+            rightQuadRotation = rightQuadParent.localRotation.eulerAngles,
+            rightQuadScale = rightQuadParent.localScale,
+            positionSpeed = this.positionSpeed,
+            rotationSpeed = this.rotationSpeed,
+            scaleSpeed = this.scaleSpeed,
+            depthAdjustSpeed = this.depthAdjustSpeed
+        };
+
+        profiles.Add(newProfile);
+        currentProfileIndex = profiles.Count - 1;
+        SaveProfileToFile(newProfile);
+        UpdateHUD();
+    }
     void OnEnable()
     {
         InputDevices.deviceConnected += RegisterDevice;
@@ -670,29 +677,36 @@ public class StereoQuadAdjustment : MonoBehaviour
         }
     }
 
-    private void LoadDefaultProfiles()
+    private void StartCalibration()
     {
-        // Copy default profiles from Assets folder to persistent data path on first run
-        string defaultProfilesPath = Path.Combine(Application.streamingAssetsPath, "Profiles");
-        if (Directory.Exists(defaultProfilesPath))
-        {
-            Directory.CreateDirectory(profilesDirectory);
+        showingCalibrationInstructions = true;
+        UpdateHUD();
+    }
 
-            string[] files = Directory.GetFiles(defaultProfilesPath, "*.json");
-            foreach (string file in files)
-            {
-                string fileName = Path.GetFileName(file);
-                string destFile = Path.Combine(profilesDirectory, fileName);
-                if (!File.Exists(destFile))
-                {
-                    File.Copy(file, destFile);
-                    Debug.Log($"Copied default profile '{fileName}' to '{destFile}'");
-                }
-            }
-        }
-        else
-        {
-            Debug.LogWarning("No default profiles found in StreamingAssets/Profiles");
-        }
+    private void BeginActualCalibration()
+    {
+        showingCalibrationInstructions = false;
+        isInCalibration = true;
+        
+        // Set eyes apart for calibration
+        leftQuadParent.localPosition = defaultCalibrationStartPosition + Vector3.left * eyeSeparationOffset;
+        rightQuadParent.localPosition = defaultCalibrationStartPosition + Vector3.right * eyeSeparationOffset;
+        
+        // Reset rotations
+        leftQuadParent.localRotation = Quaternion.Euler(defaultRotation);
+        rightQuadParent.localRotation = Quaternion.Euler(defaultRotation);
+        
+        // Set initial modes
+        leftEyeMode = AdjustmentMode.Move;
+        rightEyeMode = AdjustmentMode.Move;
+        
+        UpdateHUD();
+    }
+
+    private void FinishCalibration()
+    {
+        isInCalibration = false;
+        CreateNewProfile();
+        UpdateHUD();
     }
 }

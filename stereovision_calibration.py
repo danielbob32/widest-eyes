@@ -6,7 +6,7 @@ import glob
 ################ FIND CHESSBOARD CORNERS - OBJECT POINTS AND IMAGE POINTS #############################
 
 chessboardSize = (9,6)
-frameSize = (1480,720)
+frameSize = (1280,720)
 
 
 # termination criteria
@@ -26,8 +26,8 @@ imgpointsL = [] # 2d points in image plane.
 imgpointsR = [] # 2d points in image plane.
 
 
-imagesLeft = sorted(glob.glob('images/stereoLeft/*.png'))
-imagesRight = sorted(glob.glob('images/stereoRight/*.png'))
+imagesLeft = sorted(glob.glob('left_wide/*.png'))
+imagesRight = sorted(glob.glob('right_wide/*.png'))
 
 for imgLeft, imgRight in zip(imagesLeft, imagesRight):
 
@@ -96,16 +96,22 @@ retStereo, newCameraMatrixL, distL, newCameraMatrixR, distR, rot, trans, essenti
 rectifyScale= 1
 rectL, rectR, projMatrixL, projMatrixR, Q, roi_L, roi_R= cv.stereoRectify(newCameraMatrixL, distL, newCameraMatrixR, distR, grayL.shape[::-1], rot, trans, rectifyScale,(0,0))
 
-stereoMapL = cv.initUndistortRectifyMap(newCameraMatrixL, distL, rectL, projMatrixL, grayL.shape[::-1], cv.CV_16SC2)
-stereoMapR = cv.initUndistortRectifyMap(newCameraMatrixR, distR, rectR, projMatrixR, grayR.shape[::-1], cv.CV_16SC2)
+# Get the original maps
+mapL1, mapL2 = cv.initUndistortRectifyMap(newCameraMatrixL, distL, rectL, projMatrixL, grayL.shape[::-1], cv.CV_16SC2)
+mapR1, mapR2 = cv.initUndistortRectifyMap(newCameraMatrixR, distR, rectR, projMatrixR, grayR.shape[::-1], cv.CV_16SC2)
+
+# Create normalized versions
+normMapL1 = mapL1.astype(np.float32) / frameSize[0]  # width normalization
+normMapL2 = mapL2.astype(np.float32) / frameSize[1]  # height normalization
+normMapR1 = mapR1.astype(np.float32) / frameSize[0]
+normMapR2 = mapR2.astype(np.float32) / frameSize[1]
 
 print("Saving parameters!")
 cv_file = cv.FileStorage('stereoMap.xml', cv.FILE_STORAGE_WRITE)
 
-cv_file.write('stereoMapL_x',stereoMapL[0])
-cv_file.write('stereoMapL_y',stereoMapL[1])
-cv_file.write('stereoMapR_x',stereoMapR[0])
-cv_file.write('stereoMapR_y',stereoMapR[1])
+cv_file.write('stereoMapL_x', normMapL1)
+cv_file.write('stereoMapL_y', normMapL2)
+cv_file.write('stereoMapR_x', normMapR1)
+cv_file.write('stereoMapR_y', normMapR2)
 
 cv_file.release()
-

@@ -206,15 +206,20 @@ MonoBehaviour:
   defaultPosition: {x: 0.020019, y: -0.090027, z: 1}
   defaultRotation: {x: 0, y: 180, z: 0}
   defaultScale: {x: 0.0005599085, y: 0.0005599085, z: 0.0005599085}
-  activeColor: {r: 1, g: 0, b: 0, a: 1}
-  inactiveColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
-  hudScale: 0.003
-  hudOffset: {x: 0.15, y: 0.06, z: 0.5}
+  hudScale: 0.002
+  hudOffset: {x: 0.25, y: 0.02, z: 0.5}
+  hudTitleColor: {r: 0.1764706, g: 0.43529412, b: 0.94509804, a: 1}
+  hudHighlightColor: {r: 0.28627452, g: 0.6666667, b: 0.9607843, a: 1}
+  hudTextColor: {r: 0.9811321, g: 0.9041964, b: 0.31933072, a: 1}
+  hudSubtitleColor: {r: 0.28595585, g: 0.6668985, b: 0.9622642, a: 1}
   rotationSpeed: 0.1
   positionSpeed: 1
   scaleSpeed: 0.1
   depthAdjustSpeed: 0.00001
   thumbstickDeadzone: 0.1
+  calibrationTextColor: {r: 0.1764706, g: 0.43529412, b: 0.94509804, a: 1}
+  defaultCalibrationStartPosition: {x: 0.025, y: -0.090027, z: 1}
+  eyeSeparationOffset: 0.1
 --- !u!4 &97742414 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 80a7a1a346c187b409c87fb377f585f6, type: 3}
@@ -1646,6 +1651,8 @@ MonoBehaviour:
   requestedWidth: 2560
   requestedHeight: 720
   requestedFPS: 30
+  calibrationFilePath: stereoMap.xml
+  useCalibrationFile: 0
 --- !u!1 &1553173326
 GameObject:
   m_ObjectHideFlags: 0

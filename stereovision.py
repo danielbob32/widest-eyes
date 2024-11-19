@@ -12,8 +12,8 @@ stereoMapR_y = cv_file.getNode('stereoMapR_y').mat()
 cv_file.release()
 
 # Load the images
-left_image_path = "images/stereoLeft/left_12.png"
-right_image_path = "images/stereoRight/right_12.png"
+left_image_path = "left_wide/left_12.png"
+right_image_path = "right_wide/right_12.png"
 
 frame_left = cv.imread(left_image_path)
 frame_right = cv.imread(right_image_path)

@@ -12,6 +12,9 @@ Shader "Custom/StereoLensCorrection"
         _Fy ("Focal Y", Float) = 502.86627903
         _Cx ("Center X", Float) = 687.2781095
         _Cy ("Center Y", Float) = 388.52699115
+        _RectMapL ("Left Rectification Map", 2D) = "black" {}
+        _RectMapR ("Right Rectification Map", 2D) = "black" {}
+        [Toggle] _UseRectificationMaps ("Use Rectification Maps", Float) = 0
     }
     
     SubShader
@@ -43,6 +46,9 @@ Shader "Custom/StereoLensCorrection"
             float4 _MainTex_ST;
             float _K1, _K2, _K3, _P1, _P2;
             float _Fx, _Fy, _Cx, _Cy;
+            float _UseRectificationMaps;
+            sampler2D _RectMapL;
+            sampler2D _RectMapR;
 
             static const float EYE_WIDTH = 1280.0;
             static const float EYE_HEIGHT = 720.0;
@@ -55,57 +61,72 @@ Shader "Custom/StereoLensCorrection"
                 return o;
             }
             
-            float2 undistort(float2 uv)
+            float2 applyBasicDistortion(float2 p)
             {
-                // Determine which eye section we're in (left or right half of the UV)
-                bool isRightEye = uv.x >= 0.5;
-                float localUV_x = isRightEye ? (uv.x - 0.5) * 2.0 : uv.x * 2.0;
-                
-                // Convert local UV to pixel coordinates (0-1280 range)
-                float2 pixel_coord = float2(
-                    localUV_x * EYE_WIDTH,
-                    uv.y * EYE_HEIGHT
-                );
-                
-                // Convert to normalized camera coordinates
-                float2 p = float2(
-                    (pixel_coord.x - _Cx) / _Fx,
-                    (pixel_coord.y - _Cy) / _Fy
-                );
-                
-                // Calculate r^2 and higher powers
                 float r2 = p.x * p.x + p.y * p.y;
                 float r4 = r2 * r2;
                 float r6 = r4 * r2;
                 
-                // Calculate tangential distortion
+                float radial = 1.0 + _K1 * r2 + _K2 * r4 + _K3 * r6;
+                
                 float2 tangential = float2(
                     2.0 * _P1 * p.x * p.y + _P2 * (r2 + 2.0 * p.x * p.x),
                     _P1 * (r2 + 2.0 * p.y * p.y) + 2.0 * _P2 * p.x * p.y
                 );
                 
-                // Calculate radial distortion factor
-                float radial = 1.0 + _K1 * r2 + _K2 * r4 + _K3 * r6;
-                
-                // Apply distortions
-                float2 corrected = float2(
+                return float2(
                     p.x * radial + tangential.x,
                     p.y * radial + tangential.y
                 );
+            }
+
+            float2 applyRectificationMap(float2 uv, bool isRightEye)
+            {
+                // The UV coordinates here are already in per-eye space (0-1)
+                float2 rectified;
+                if (isRightEye)
+                {
+                    rectified = tex2D(_RectMapR, uv).xy;
+                }
+                else
+                {
+                    rectified = tex2D(_RectMapL, uv).xy;
+                }
+                return rectified;
+            }
+            
+            float2 undistort(float2 uv)
+            {
+                bool isRightEye = uv.x >= 0.5;
+                float localUV_x = isRightEye ? (uv.x - 0.5) * 2.0 : uv.x * 2.0;
+                float2 localUV = float2(localUV_x, uv.y);
                 
-                // Convert back to pixel coordinates
-                float2 undistorted_pixel = float2(
-                    corrected.x * _Fx + _Cx,
-                    corrected.y * _Fy + _Cy
+                float2 pixel_coord = float2(
+                    localUV.x * EYE_WIDTH,
+                    localUV.y * EYE_HEIGHT
                 );
                 
-                // Convert back to UV space, maintaining the original eye section
-                float2 finalUV = float2(
-                    undistorted_pixel.x / EYE_WIDTH,
-                    undistorted_pixel.y / EYE_HEIGHT
+                float2 p = float2(
+                    (pixel_coord.x - _Cx) / _Fx,
+                    (pixel_coord.y - _Cy) / _Fy
                 );
                 
-                // Remap to original UV space (0-1)
+                float2 corrected;
+                if (_UseRectificationMaps > 0.5)
+                {
+                    corrected = applyRectificationMap(localUV, isRightEye);
+                }
+                else
+                {
+                    corrected = applyBasicDistortion(p);
+                    corrected = float2(
+                        corrected.x * _Fx + _Cx,
+                        corrected.y * _Fy + _Cy
+                    );
+                    corrected = corrected / float2(EYE_WIDTH, EYE_HEIGHT);
+                }
+                
+                float2 finalUV = corrected;
                 finalUV.x = isRightEye ? (finalUV.x * 0.5 + 0.5) : (finalUV.x * 0.5);
                 
                 return finalUV;
@@ -115,7 +136,6 @@ Shader "Custom/StereoLensCorrection"
             {
                 float2 undistortedUV = undistort(i.uv);
                 
-                // Check if the undistorted point is within bounds
                 if (undistortedUV.x < 0 || undistortedUV.x > 1 || 
                     undistortedUV.y < 0 || undistortedUV.y > 1)
                 {
